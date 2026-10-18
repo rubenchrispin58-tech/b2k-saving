@@ -14,7 +14,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "B2K SafeBank Coach Bot est en ligne et sécurisé 24/7 !"
+    return "B2K SafeBank Coach Bot v5 est en ligne et sécurisé 24/7 !"
 
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.getenv("PORT", 10000)))
@@ -22,10 +22,10 @@ def run_flask():
 threading.Thread(target=run_flask, daemon=True).start()
 
 # ----------------------------------------------------
-# 2. BASE DE DONNÉES SQLITE (PROJETS + HISTORIQUE BONUS)
+# 2. BASE DE DONNÉES SQLITE
 # ----------------------------------------------------
 def init_db():
-    conn = sqlite3.connect("savings_v4.db", check_same_thread=False)
+    conn = sqlite3.connect("savings_v5.db", check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS projects (
@@ -63,9 +63,11 @@ user_states = {}
 
 def set_bot_commands():
     commands = [
-        types.BotCommand("start", "Ouvrir mon coffre-fort & tableau de bord 💼"),
-        types.BotCommand("projets", "Voir tous mes objectifs d'épargne 📂"),
-        types.BotCommand("aide", "Comprendre ton banquier 🤖")
+        types.BotCommand("start", "Ouvrir le coffre-fort 💼"),
+        types.BotCommand("projets", "Voir mes objectifs 📂"),
+        types.BotCommand("tester", "Tester le rappel quotidien ⏰"),
+        types.BotCommand("annonce", "Voir les dernières mises à jour 🚀"),
+        types.BotCommand("aide", "Comment ça marche 🤖")
     ]
     bot.set_my_commands(commands)
 
@@ -74,14 +76,56 @@ set_bot_commands()
 @bot.message_handler(commands=['aide'])
 def help_cmd(message):
     text = (
-        "🤖 **LE COACH & TON BANQUIER PERSONNEL**\n"
+        "🤖 **LE COACH & TON BANQUIER**\n"
         "───────────────────────────\n"
-        "Yo poto ! Ici, pas de blague avec l'argent. La discipline, c'est la clé de la réussite.\n\n"
+        "Yo poto ! Ici, on gère ton cash avec style et discipline. Pas de blague.\n\n"
+        "• **Objectif d'achat ou Réserve cash :** Tu choisis si tu cibles un article ou si tu mets juste de l'argent de côté pour tes mouvements.\n"
         "• **Versement quotidien :** Ton effort régulier.\n"
-        "• **Bonus libre :** Un coup de boost pour faire baisser l'objectif plus vite (ne remplace pas le versement du lendemain).\n"
-        "• **Discipline :** Si tu valides sans avoir payé, tu te mens à toi-même. Sois carré !"
+        "• **Bonus libre :** Un coup de boost pour faire baisser le total plus vite."
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+@bot.message_handler(commands=['annonce'])
+def annonce_cmd(message):
+    text = (
+        "🚀 **ANNONCE OFFICIELLE - MISE À JOUR B2K v5** 🚀\n"
+        "───────────────────────────\n"
+        "Yo l'équipe ! Gros déploiement aujourd'hui :\n"
+        "• Ajout du mode **Réserve de cash libre** (économiser sans but d'achat précis, dispo pour tout imprévu).\n"
+        "• Nouvelle commande **/tester** pour simuler ton alerte de rappel.\n"
+        "• Sécurité allégée à **2 étapes** pour valider tes versements plus fluidement.\n"
+        "• Interface nettoyée, plus carrée et sans blabla inutile.\n\n"
+        "Restez disciplinés, le capital monte ! 📈"
+    )
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+@bot.message_handler(commands=['tester'])
+def tester_cmd(message):
+    chat_id = message.chat.id
+    conn = sqlite3.connect("savings_v5.db", check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute("SELECT project_id, project_name, daily_target FROM projects WHERE chat_id=? LIMIT 1", (chat_id,))
+    proj = cursor.fetchone()
+    conn.close()
+    
+    if not proj:
+        bot.send_message(chat_id, "⚠️ Crète d'abord un projet avec /start pour tester ton rappel !")
+        return
+    
+    pid, name, daily = proj
+    text = (
+        "⏰ **[TEST DE RAPPEL AUTOMATIQUE]**\n"
+        "───────────────────────────\n"
+        f"🚨 **Hé l'ami, c'est l'heure d'ajouter de l'argent pour *{name}* !**\n"
+        f"Tu dois verser tes **{daily:,.0f} HTG** du jour. Es-tu prêt à valider ça ?"
+    )
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton(f"✅ Valider mon versement ({daily:,.0f} HTG)", callback_data=f"conf_pay_norm_{pid}"),
+        types.InlineKeyboardButton("🔥 Ajouter un bonus libre", callback_data=f"pay_bonus_{pid}"),
+        types.InlineKeyboardButton("📂 Voir le coffre", callback_data=f"select_proj_{pid}")
+    )
+    bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=markup)
 
 @bot.message_handler(commands=['projets', 'start'])
 def start_cmd(message):
@@ -89,7 +133,7 @@ def start_cmd(message):
     show_main_menu(chat_id)
 
 def show_main_menu(chat_id):
-    conn = sqlite3.connect("savings_v4.db", check_same_thread=False)
+    conn = sqlite3.connect("savings_v5.db", check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute("SELECT project_id, project_name, target_amount, saved_amount, daily_target FROM projects WHERE chat_id=?", (chat_id,))
     projects = cursor.fetchall()
@@ -102,7 +146,7 @@ def show_main_menu(chat_id):
     text = (
         "💼 **SAFE-BANK | TES COFFRES-FORTS**\n"
         "───────────────────────────\n"
-        "Yo l'artiste ! Quel objectif on surveille aujourd'hui ?"
+        "Choisis ton objectif du moment :"
     )
     
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -116,17 +160,37 @@ def show_main_menu(chat_id):
     bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=markup)
 
 # ----------------------------------------------------
-# 4. ASSISTANT DE CRÉATION DE PROJET (WIZARD)
+# 4. ASSISTANT DE CRÉATION (AVEC OPTION RÉSERVE LIBRE)
 # ----------------------------------------------------
 def start_new_project_wizard(chat_id):
-    user_states[chat_id] = {'step': 'NAME'}
+    user_states[chat_id] = {'step': 'TYPE_CHOICE'}
     text = (
         "🚀 **NOUVEL OBJECTIF FINANCIER**\n"
         "───────────────────────────\n"
-        "✍️ **Quel est le nom de ton projet ?**\n"
-        "*(Exemple: Casque Audio, Nouvelle Console, Investissement)*"
+        "Quel type de coffre veux-tu ouvrir ?\n\n"
+        "1️⃣ **Achat spécifique** (Ex: Matériel, Article, Projet précis)\n"
+        "2️⃣ **Réserve de cash libre** (Économiser du cash pour tes mouvements / par sécurité, sans article précis)"
     )
-    bot.send_message(chat_id, text, parse_mode="Markdown")
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("🎯 Objectif d'achat", callback_data="type_achat"),
+        types.InlineKeyboardButton("💵 Réserve de cash libre", callback_data="type_reserve")
+    )
+    bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data in ["type_achat", "type_reserve"])
+def handle_type_choice(call):
+    chat_id = call.message.chat.id
+    if call.data == "type_reserve":
+        user_states[chat_id] = {'step': 'TARGET', 'name': 'Réserve de cash libre'}
+        bot.send_message(chat_id, "💵 Quel est le **montant total de cash** que tu veux accumuler dans ta réserve ?\n*(Exemple: 25000)*", parse_mode="Markdown")
+    else:
+        user_states[chat_id] = {'step': 'NAME'}
+        bot.send_message(chat_id, "✍️ **Quel est le nom de ton projet d'achat ?**\n*(Exemple: Nouveau téléphone, Matériel)*", parse_mode="Markdown")
+    try:
+        bot.delete_message(chat_id, call.message.message_id)
+    except:
+        pass
 
 @bot.message_handler(func=lambda msg: msg.chat.id in user_states and user_states[msg.chat.id].get('step') in ['NAME', 'TARGET', 'DAILY', 'TIME'])
 def handle_wizard(msg):
@@ -150,7 +214,7 @@ def handle_wizard(msg):
         try:
             state['daily'] = float(msg.text.replace(" ", ""))
             state['step'] = 'TIME'
-            bot.send_message(chat_id, "⏰ À quelle **heure** veux-tu ton rappel quotidien ?\n*(Format HH:MM, exemple: 09:00 ou 18:30)*", parse_mode="Markdown")
+            bot.send_message(chat_id, "⏰ À quelle **heure précise** veux-tu ton rappel quotidien ?\n*(Format HH:MM strict, exemple: 09:00 ou 18:30)*", parse_mode="Markdown")
         except:
             bot.send_message(chat_id, "⚠️ Entre un montant journalier valide (ex: 250).")
 
@@ -161,7 +225,7 @@ def handle_wizard(msg):
             state['time'] = time_str
             today_str = datetime.now().strftime("%Y-%m-%d")
             
-            conn = sqlite3.connect("savings_v4.db", check_same_thread=False)
+            conn = sqlite3.connect("savings_v5.db", check_same_thread=False)
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO projects (chat_id, project_name, target_amount, saved_amount, daily_target, notify_time, start_date, days_count)
@@ -186,7 +250,7 @@ def handle_wizard(msg):
             bot.send_message(chat_id, "⚠️ Format d'heure invalide. Utilise exactement le format **HH:MM** (ex: 09:00).")
 
 # ----------------------------------------------------
-# 5. GESTION DES INTERACTIONS & BOUTONS
+# 5. GESTION DES INTERACTIONS & 2 ÉTAPES DE VÉRIFICATION
 # ----------------------------------------------------
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
@@ -212,10 +276,10 @@ def handle_callbacks(call):
         show_project_dashboard(chat_id, proj_id)
         return
 
-    # --- ÉTAPE 1 DE CONFIRMATION (TRIPLE SÉCURITÉ CONTRE LES CLICS ACCIDENTELS) ---
+    # --- ÉTAPE 1 DE VÉRIFICATION ---
     if data.startswith("conf_pay_norm_"):
         proj_id = int(data.split("_")[3])
-        conn = sqlite3.connect("savings_v4.db", check_same_thread=False)
+        conn = sqlite3.connect("savings_v5.db", check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("SELECT project_name, daily_target FROM projects WHERE project_id=?", (proj_id,))
         proj = cursor.fetchone()
@@ -224,57 +288,40 @@ def handle_callbacks(call):
         if proj:
             name, daily = proj
             text = (
-                f"🛡️ **TRIPLE SÉCURITÉ - ÉTAPE 1/3**\n"
+                f"🛡️ **VÉRIFICATION 1 / 2**\n"
                 f"───────────────────────────\n"
-                f"Tu es sur le point de valider ton versement de **{daily:,.0f} HTG** pour *{name}*.\n\n"
-                f"⚠️ *As-tu réellement déposé cet argent aujourd'hui ?*"
+                f"Hé l'ami, **as-tu vraiment l'argent pour le moment** pour verser ces **{daily:,.0f} HTG** dans *{name}* ?"
             )
             markup = types.InlineKeyboardMarkup(row_width=1)
             markup.add(
-                types.InlineKeyboardButton("👉 Oui, continuer (1/3)", callback_data=f"conf2_pay_{proj_id}"),
+                types.InlineKeyboardButton("👉 Oui, j'ai l'argent (Passer à l'étape 2)", callback_data=f"conf2_pay_{proj_id}"),
                 types.InlineKeyboardButton("❌ Annuler", callback_data=f"select_proj_{proj_id}")
             )
             bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=markup)
         return
 
-    # --- ÉTAPE 2 DE CONFIRMATION ---
+    # --- ÉTAPE 2 DE VÉRIFICATION (DISCIPLINE STRICTE) ---
     if data.startswith("conf2_pay_"):
         proj_id = int(data.split("_")[2])
         text = (
-            "🛡️ **TRIPLE SÉCURITÉ - ÉTAPE 2/3**\n"
+            "🛡️ **VÉRIFICATION 2 / 2 (DISCIPLINE)**\n"
             "───────────────────────────\n"
-            "🧠 *Rappelle-toi ce que ton banquier te dit :*\n"
-            "Si tu n'as pas vraiment ajouté de l'argent, tu commences à ne pas être sérieux dans le projet. C'est la discipline qui compte !\n\n"
-            "Es-tu totalement sûr de toi ?"
+            "🧠 **Écoute ton banquier :**\n"
+            "Tu dois être sérieux dans le business et dans l'économie. Il faut avoir de la discipline. Ne valide rien si tu n'as pas réellement mis cet argent de côté.\n\n"
+            "Es-tu 100% carré ?"
         )
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton("👉 Oui, je suis carré (2/3)", callback_data=f"conf3_pay_{proj_id}"),
-            types.InlineKeyboardButton("❌ Oups, annuler", callback_data=f"select_proj_{proj_id}")
+            types.InlineKeyboardButton("✅ OUI, ENCAISSER LE VERSEMENT", callback_data=f"exec_pay_norm_{proj_id}"),
+            types.InlineKeyboardButton("❌ Non, annuler", callback_data=f"select_proj_{proj_id}")
         )
         bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=markup)
         return
 
-    # --- ÉTAPE 3 (FINALE) DE CONFIRMATION ---
-    if data.startswith("conf3_pay_"):
-        proj_id = int(data.split("_")[2])
-        text = (
-            "🛡️ **TRIPLE SÉCURITÉ - DERNIÈRE ÉTAPE (3/3)**\n"
-            "───────────────────────────\n"
-            "Dernière chance avant l'enregistrement définitif dans ton coffre."
-        )
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        markup.add(
-            types.InlineKeyboardButton("✅ CONFIRMER LE VERSEMENT", callback_data=f"exec_pay_norm_{proj_id}"),
-            types.InlineKeyboardButton("❌ Annuler", callback_data=f"select_proj_{proj_id}")
-        )
-        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=markup)
-        return
-
-    # --- EXÉCUTION DU VERSEMENT QUOTIDIEN ---
+    # --- EXÉCUTION FINALE DU VERSEMENT ---
     if data.startswith("exec_pay_norm_"):
         proj_id = int(data.split("_")[3])
-        conn = sqlite3.connect("savings_v4.db", check_same_thread=False)
+        conn = sqlite3.connect("savings_v5.db", check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("SELECT project_name, daily_target, days_count FROM projects WHERE project_id=?", (proj_id,))
         proj = cursor.fetchone()
@@ -284,12 +331,12 @@ def handle_callbacks(call):
             cursor.execute("UPDATE projects SET saved_amount = saved_amount + ?, days_count = ? WHERE project_id=?", (daily, new_days, proj_id))
             conn.commit()
             
-            bot.send_message(chat_id, f"💎 **ENCAISSÉ AVEC SUCCÈS !**\n+{daily:,.0f} HTG ajoutés à ton coffre *{name}*.\n\n📈 *Ton banquier valide ta rigueur !*", parse_mode="Markdown")
+            bot.send_message(chat_id, f"💎 **VALIDÉ ET SÉCURISÉ !**\n+{daily:,.0f} HTG injectés dans *{name}*.\n\n📈 *C'est ça la vraie discipline poto !*", parse_mode="Markdown")
         conn.close()
         show_project_dashboard(chat_id, proj_id)
         return
 
-    # --- DEMANDE DE BONUS (SAISIE CLAVIER) ---
+    # --- AJOUT DE BONUS ---
     if data.startswith("pay_bonus_"):
         proj_id = int(data.split("_")[2])
         user_states[chat_id] = {'step': 'BONUS_AMT', 'proj_id': proj_id}
@@ -297,7 +344,7 @@ def handle_callbacks(call):
         text = (
             "🔥 **AJOUT D'UN BONUS LIBRE**\n"
             "───────────────────────────\n"
-            "*(Rappelle-toi : ce bonus fait baisser ton objectif global, mais n'annule pas ton versement de demain !)*\n\n"
+            "*(Ce bonus fait baisser ton objectif global, mais n'annule pas ton versement de demain !)*\n\n"
             "✍️ **Écris le montant du bonus en chiffres :**"
         )
         bot.send_message(chat_id, text, parse_mode="Markdown")
@@ -306,7 +353,7 @@ def handle_callbacks(call):
     # --- HISTORIQUE DES BONUS ---
     if data.startswith("view_bonuses_"):
         proj_id = int(data.split("_")[2])
-        conn = sqlite3.connect("savings_v4.db", check_same_thread=False)
+        conn = sqlite3.connect("savings_v5.db", check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("SELECT project_name FROM projects WHERE project_id=?", (proj_id,))
         p = cursor.fetchone()
@@ -333,10 +380,10 @@ def handle_callbacks(call):
             bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=markup)
         return
 
-    # --- ANALYSE & PRÉVISIONS (AVEC JOURS RESTANTS & DATE) ---
+    # --- ANALYSE ---
     if data.startswith("analyze_"):
         proj_id = int(data.split("_")[2])
-        conn = sqlite3.connect("savings_v4.db", check_same_thread=False)
+        conn = sqlite3.connect("savings_v5.db", check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("SELECT project_name, target_amount, saved_amount, daily_target, days_count FROM projects WHERE project_id=?", (proj_id,))
         proj = cursor.fetchone()
@@ -345,21 +392,18 @@ def handle_callbacks(call):
         if proj:
             name, target, saved, daily, days_count = proj
             remaining = max(0, target - saved)
-            
-            # Calcul du nombre de jours restants nécessaires
             days_left = int(remaining / daily) if daily > 0 else 0
-            
             today_date_str = datetime.now().strftime("%d %B %Y")
             
             text = (
                 f"📊 **RAPPORT FINANCIER & DISCIPLINE**\n"
                 f"───────────────────────────\n"
                 f"📅 **Aujourd'hui :** {today_date_str}\n"
-                f"🎯 **Projet :** {name}\n"
-                f"💎 **Déjà sécurisé :** {saved:,.0f} HTG / {target:,.0f} HTG\n"
-                f"⏳ **Il te reste environ :** {days_left} jours d'effort pour tout boucler !\n\n"
-                f"📌 **Ton parcours :** C'est ton **{days_count + 1}e jour** d'économie.\n"
-                f"💡 *Demain sera un nouveau palier. Ne rate pas un jour, la régularité fait tout !*"
+                f"🎯 **Objectif :** {name}\n"
+                f"💎 **Sécurisé :** {saved:,.0f} HTG / {target:,.0f} HTG\n"
+                f"⏳ **Il te reste environ :** {days_left} jours d'effort !\n\n"
+                f"📌 **Parcours :** C'est ton **{days_count + 1}e jour** validé.\n"
+                f"💡 *Reste droit dans tes bottes, la discipline paie cash.*"
             )
             markup = types.InlineKeyboardMarkup()
             markup.add(types.InlineKeyboardButton("🔙 Retour au coffre", callback_data=f"select_proj_{proj_id}"))
@@ -367,7 +411,7 @@ def handle_callbacks(call):
         return
 
 def show_project_dashboard(chat_id, proj_id):
-    conn = sqlite3.connect("savings_v4.db", check_same_thread=False)
+    conn = sqlite3.connect("savings_v5.db", check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute("SELECT project_name, target_amount, saved_amount, daily_target, notify_time, days_count FROM projects WHERE project_id=?", (proj_id,))
     proj = cursor.fetchone()
@@ -380,14 +424,13 @@ def show_project_dashboard(chat_id, proj_id):
     name, target, saved, daily, notif_time, days_count = proj
     remaining = max(0, target - saved)
     progress = int((saved / target) * 100) if target > 0 else 0
-    
     today_str = datetime.now().strftime("%d %B %Y")
 
     text = (
         f"🎯 **COFFRE-FORT : {name}**\n"
         f"───────────────────────────\n"
         f"📅 **Date du jour :** {today_str}\n"
-        f"🚨 *Rappel : Demain sera ton {days_count + 2}e jour d'économie, sois discipliné, ne rate pas un jour !*\n\n"
+        f"🚨 *Rappel : Demain sera ton {days_count + 2}e jour, sois discipliné, ne rate pas un jour !*\n\n"
         f"💰 **Objectif Total :** {target:,.0f} HTG\n"
         f"💎 **Déjà Sécurisé :** {saved:,.0f} HTG ({progress}%)\n"
         f"⏳ **Reste à mettre :** {remaining:,.0f} HTG\n"
@@ -401,14 +444,14 @@ def show_project_dashboard(chat_id, proj_id):
         types.InlineKeyboardButton(f"✅ Valider mon versement ({daily:,.0f} HTG)", callback_data=f"conf_pay_norm_{proj_id}"),
         types.InlineKeyboardButton("🔥 Ajouter un bonus libre", callback_data=f"pay_bonus_{proj_id}"),
         types.InlineKeyboardButton("📂 Voir l'historique des bonus", callback_data=f"view_bonuses_{proj_id}"),
-        types.InlineKeyboardButton("📊 Analyser mes performances & Jours restants", callback_data=f"analyze_{proj_id}"),
+        types.InlineKeyboardButton("📊 Analyser mes performances", callback_data=f"analyze_{proj_id}"),
         types.InlineKeyboardButton("🔙 Retour à mes coffres", callback_data="back_home")
     )
 
     bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=markup)
 
 # ----------------------------------------------------
-# 6. CAPTURE DES TEXTES (SAISIE DE BONUS)
+# 6. CAPTURE DES TEXTES (BONUS)
 # ----------------------------------------------------
 @bot.message_handler(func=lambda msg: msg.chat.id in user_states and user_states[msg.chat.id].get('step') == 'BONUS_AMT')
 def handle_bonus_input(msg):
@@ -420,17 +463,15 @@ def handle_bonus_input(msg):
         bonus_amt = float(msg.text.replace(" ", ""))
         today_date = datetime.now().strftime("%Y-%m-%d")
         
-        conn = sqlite3.connect("savings_v4.db", check_same_thread=False)
+        conn = sqlite3.connect("savings_v5.db", check_same_thread=False)
         cursor = conn.cursor()
-        # Mise à jour du total épargné
         cursor.execute("UPDATE projects SET saved_amount = saved_amount + ? WHERE project_id=?", (bonus_amt, proj_id))
-        # Enregistrement dans l'historique des bonus
         cursor.execute("INSERT INTO bonuses (project_id, amount, date_added) VALUES (?, ?, ?)", (proj_id, bonus_amt, today_date))
         conn.commit()
         conn.close()
         
         del user_states[chat_id]
-        bot.send_message(chat_id, f"🚀 **BONUS ENREGISTRÉ AVEC SUCCÈS !**\n+{bonus_amt:,.0f} HTG injectés dans ton coffre !\n\n*Rappelle-toi : ton versement quotidien de demain reste bien exigé. C'est la discipline qui paie l'ami !*", parse_mode="Markdown")
+        bot.send_message(chat_id, f"🚀 **BONUS ENREGISTRÉ AVEC SUCCÈS !**\n+{bonus_amt:,.0f} HTG injectés dans ton coffre !\n\n*Ton versement quotidien de demain reste attendu. Bien joué poto !*", parse_mode="Markdown")
         show_project_dashboard(chat_id, proj_id)
     except:
         bot.send_message(chat_id, "⚠️ Entre un montant de bonus valide en chiffres (ex: 500).")
